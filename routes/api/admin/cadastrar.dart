@@ -1,19 +1,9 @@
-import 'dart:convert';
+import 'dart:io';
 import 'package:dart_frog/dart_frog.dart';
-import 'package:uuid/uuid.dart'; // Importa o gerador de UUID
+import 'package:uuid/uuid.dart';
+import 'package:postgres/postgres.dart';
 
-const uuid = Uuid(); // Instância do gerador de UUID
-
-// Banco temporário iniciado com UUID no administrador padrão
-List<Map<String, dynamic>> administradoresBD = [
-  {
-    'id': uuid.v4(), // Gera um UUID único universal padrão
-    'nome': 'Administrador Padrão',
-    'email': 'admin@grafica.com',
-    'cpf': '000.000.000-00',
-    'senha': '123'
-  }
-];
+const uuid = Uuid();
 
 Future<Response> onRequest(RequestContext context) async {
   if (context.request.method != HttpMethod.post) {
@@ -28,7 +18,6 @@ Future<Response> onRequest(RequestContext context) async {
   final senha = body['senha'];
   final confirmarSenha = body['confirmarSenha'];
 
-  // Validação de campos obrigatórios
   if (nome == null || email == null || cpf == null || senha == null || confirmarSenha == null ||
       nome.toString().isEmpty || email.toString().isEmpty || cpf.toString().isEmpty || senha.toString().isEmpty || confirmarSenha.toString().isEmpty) {
     return Response.json(
@@ -37,7 +26,6 @@ Future<Response> onRequest(RequestContext context) async {
     );
   }
 
-  // Validação de confirmação de senha
   if (senha != confirmarSenha) {
     return Response.json(
       statusCode: 400, 
@@ -45,37 +33,70 @@ Future<Response> onRequest(RequestContext context) async {
     );
   }
 
-  // Verifica se o e-mail já existe
-  final emailExistente = administradoresBD.any((admin) => admin['email'] == email);
-  if (emailExistente) {
+  Connection? connection;
+
+  try {
+    connection = await Connection.open(
+      Endpoint(
+        host: Platform.environment['DB_HOST'] ?? 'localhost',
+        port: int.parse(Platform.environment['DB_PORT'] ?? '5432'),
+        database: Platform.environment['DB_NAME'] ?? 'postgres',
+        username: Platform.environment['DB_USER'] ?? 'postgres',
+        password: Platform.environment['DB_PASSWORD'] ?? '',
+      ),
+      settings: const ConnectionSettings(
+        sslMode: SslMode.require,
+      ),
+    );
+
+    final resultadoEmail = await connection.execute(
+      Sql.named('SELECT id FROM administradores WHERE email = @email'),
+      parameters: {'email': email},
+    );
+
+    if (resultadoEmail.isNotEmpty) {
+      await connection.close();
+      return Response.json(
+        statusCode: 400, 
+        body: {'sucesso': false, 'mensagem': 'Este e-mail já está cadastrado!'}
+      );
+    }
+
+    final novoId = uuid.v4();
+
+    await connection.execute(
+      Sql.named('INSERT INTO administradores (id, nome, email, cpf, senha) VALUES (@id, @nome, @email, @cpf, @senha)'),
+      parameters: {
+        'id': novoId,
+        'nome': nome,
+        'email': email,
+        'cpf': cpf,
+        'senha': senha,
+      },
+    );
+
+    await connection.close();
+
     return Response.json(
-      statusCode: 400, 
-      body: {'sucesso': false, 'mensagem': 'Este e-mail já está cadastrado!'}
+      statusCode: 201,
+      body: {
+        'sucesso': true, 
+        'mensagem': 'Cadastro realizado com sucesso!', 
+        'admin': {
+          'id': novoId,
+          'nome': nome,
+          'email': email,
+          'cpf': cpf,
+        }
+      },
+    );
+  } catch (e) {
+    if (connection != null) {
+      await connection.close();
+    }
+    return Response.json(
+      statusCode: 500,
+      body: {'sucesso': false, 'mensagem': 'Erro interno no servidor: $e'},
     );
   }
-
-  // Cria o novo administrador gerando um ID único universal (UUID)
-  final novoAdmin = {
-    'id': uuid.v4(), 
-    'nome': nome,
-    'email': email,
-    'cpf': cpf,
-    'senha': senha,
-  };
-
-  administradoresBD.add(novoAdmin);
-
-  return Response.json(
-    statusCode: 201,
-    body: {
-      'sucesso': true, 
-      'mensagem': 'Cadastro realizado com sucesso!', 
-      'admin': {
-        'id': novoAdmin['id'],
-        'nome': novoAdmin['nome'],
-        'email': novoAdmin['email'],
-        'cpf': novoAdmin['cpf']
-      }
-    },
-  );
 }

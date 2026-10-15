@@ -8,7 +8,8 @@ environment:
 
 dependencies:
   dart_frog: ^1.1.0
-  uuid: ^4.4.0
+  postgres: ^3.5.20
+  uuid: ^4.6.0
 
 dev_dependencies:
   dart_frog_lint: ^0.1.0
