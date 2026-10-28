@@ -1,86 +1,93 @@
 import 'dart:io';
+import 'package:crud_mobile_grafica_back/models/produtos.dart';
 import 'package:dart_frog/dart_frog.dart';
-import 'package:uuid/uuid.dart';
 import 'package:postgres/postgres.dart';
 
-const uuid = Uuid();
-
 Future<Response> onRequest(RequestContext context) async {
-  final method = context.request.method;
+  switch (context.request.method) {
+    case HttpMethod.get:
+      return _getProdutos(context);
+    case HttpMethod.post:
+      return _cadastrarProduto(context);
+    default:
+      return Response(statusCode: HttpStatus.methodNotAllowed);
+  }
+}
 
-  Connection? connection;
-
+// 🟢 GET: Buscar todos os produtos
+Future<Response> _getProdutos(RequestContext context) async {
   try {
-    connection = await Connection.open(
-      Endpoint(
-        host: Platform.environment['DB_HOST'] ?? 'localhost',
-        port: int.parse(Platform.environment['DB_PORT'] ?? '5432'),
-        database: Platform.environment['DB_NAME'] ?? 'postgres',
-        username: Platform.environment['DB_USER'] ?? 'postgres',
-        password: Platform.environment['DB_PASSWORD'] ?? '',
-      ),
-      settings: const ConnectionSettings(
-        sslMode: SslMode.require,
-      ),
+    final connection = context.read<Connection?>();
+    if (connection == null) {
+      return Response.json(
+        statusCode: HttpStatus.internalServerError,
+        body: {'erro': 'Conexão com o banco de dados não disponível.'},
+      );
+    }
+
+    final results = await connection.execute(
+      'SELECT id, nome, descricao, preco, imagem_url FROM produto ORDER BY id DESC',
     );
 
-    if (method == HttpMethod.post) {
-      final body = await context.request.json() as Map<String, dynamic>;
-      
-      final String id = uuid.v4();
-      final nome = body['nome'];
-      final preco = body['preco'];
-      final estoque = body['estoque'];
+    final listaProdutos = results.map((row) {
+      return Produto(
+        id: row[0] as int,
+        nome: row[1] as String,
+        descricao: row[2] as String,
+        preco: (row[3] as num).toDouble(),
+        imagemUrl: row[4] as String,
+      ).toJson();
+    }).toList();
 
-      await connection.execute(
-        Sql.named('INSERT INTO produtos (id, nome, preco, estoque) VALUES (@id, @nome, @preco, @estoque)'),
-        parameters: {
-          'id': id,
-          'nome': nome,
-          'preco': preco,
-          'estoque': estoque,
-        },
-      );
-
-      await connection.close();
-
-      final novoProduto = {
-        'id': id,
-        'nome': nome,
-        'preco': preco,
-        'estoque': estoque,
-      };
-
-      return Response.json(
-        statusCode: 201,
-        body: {'mensagem': 'Produto cadastrado com sucesso!', 'produto': novoProduto},
-      );
-    }
-
-    if (method == HttpMethod.get) {
-      final resultado = await connection.execute('SELECT id, nome, preco, estoque FROM produtos');
-
-      await connection.close();
-
-      final produtosBD = resultado.map((linha) => {
-        'id': linha[0],
-        'nome': linha[1],
-        'preco': linha[2],
-        'estoque': linha[3],
-      }).toList();
-
-      return Response.json(statusCode: 200, body: produtosBD);
-    }
-
-    await connection.close();
-    return Response.json(statusCode: 405, body: {'erro': 'Método não permitido'});
+    return Response.json(body: listaProdutos);
   } catch (e) {
-    if (connection != null) {
-      await connection.close();
-    }
     return Response.json(
-      statusCode: 500,
-      body: {'sucesso': false, 'mensagem': 'Erro interno no servidor: $e'},
+      statusCode: HttpStatus.internalServerError,
+      body: {'erro': 'Erro ao buscar produtos: ${e.toString()}'},
+    );
+  }
+}
+
+// 🔵 POST: Cadastrar novo produto
+Future<Response> _cadastrarProduto(RequestContext context) async {
+  try {
+    final connection = context.read<Connection?>();
+    if (connection == null) {
+      return Response.json(
+        statusCode: HttpStatus.internalServerError,
+        body: {'erro': 'Conexão com o banco de dados não disponível.'},
+      );
+    }
+
+    final body = await context.request.json() as Map<String, dynamic>;
+    final produto = Produto.fromJson(body);
+
+    final result = await connection.execute(
+      Sql.named(
+        'INSERT INTO produto (nome, descricao, preco, imagem_url) '
+        'VALUES (@nome, @descricao, @preco, @imagemUrl) RETURNING id',
+      ),
+      parameters: {
+        'nome': produto.nome,
+        'descricao': produto.descricao,
+        'preco': produto.preco,
+        'imagemUrl': produto.imagemUrl,
+      },
+    );
+
+    final idGerado = result.first[0];
+
+    return Response.json(
+      statusCode: HttpStatus.created,
+      body: {
+        'mensagem': 'Produto cadastrado com sucesso!',
+        'id': idGerado,
+      },
+    );
+  } catch (e) {
+    return Response.json(
+      statusCode: HttpStatus.badRequest,
+      body: {'erro': 'Erro ao cadastrar produto: ${e.toString()}'},
     );
   }
 }

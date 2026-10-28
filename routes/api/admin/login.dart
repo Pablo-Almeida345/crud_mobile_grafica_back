@@ -7,33 +7,28 @@ Future<Response> onRequest(RequestContext context) async {
     return Response.json(statusCode: 405, body: {'erro': 'Método não permitido'});
   }
 
-  final body = await context.request.json() as Map<String, dynamic>;
-  final email = body['email'];
-  final senha = body['senha'];
-
-  if (email == null || senha == null || email.toString().isEmpty || senha.toString().isEmpty) {
+  // Pega a conexão injetada globalmente pelo _middleware.dart
+  final connection = context.read<Connection?>();
+  if (connection == null) {
     return Response.json(
-      statusCode: 400,
-      body: {'sucesso': false, 'mensagem': 'E-mail e senha são obrigatórios para o login!'}
+      statusCode: 500,
+      body: {'sucesso': false, 'mensagem': 'Conexão com o banco de dados indisponível.'},
     );
   }
 
-  Connection? connection;
-
   try {
-    connection = await Connection.open(
-      Endpoint(
-        host: Platform.environment['DB_HOST'] ?? 'localhost',
-        port: int.parse(Platform.environment['DB_PORT'] ?? '5432'),
-        database: Platform.environment['DB_NAME'] ?? 'postgres',
-        username: Platform.environment['DB_USER'] ?? 'postgres',
-        password: Platform.environment['DB_PASSWORD'] ?? '',
-      ),
-      settings: const ConnectionSettings(
-        sslMode: SslMode.require,
-      ),
-    );
+    final body = await context.request.json() as Map<String, dynamic>;
+    final email = body['email'];
+    final senha = body['senha'];
 
+    if (email == null || senha == null || email.toString().isEmpty || senha.toString().isEmpty) {
+      return Response.json(
+        statusCode: 400,
+        body: {'sucesso': false, 'mensagem': 'E-mail e senha são obrigatórios para o login!'}
+      );
+    }
+
+    // Consulta o administrador na base de dados
     final resultado = await connection.execute(
       Sql.named('SELECT nome, email FROM administradores WHERE email = @email AND senha = @senha'),
       parameters: {
@@ -43,7 +38,6 @@ Future<Response> onRequest(RequestContext context) async {
     );
 
     if (resultado.isEmpty) {
-      await connection.close();
       return Response.json(
         statusCode: 401,
         body: {'sucesso': false, 'mensagem': 'E-mail ou senha inválidos!'}
@@ -51,8 +45,6 @@ Future<Response> onRequest(RequestContext context) async {
     }
 
     final adminEncontrado = resultado.first;
-
-    await connection.close();
 
     return Response.json(
       statusCode: 200,
@@ -66,9 +58,6 @@ Future<Response> onRequest(RequestContext context) async {
       },
     );
   } catch (e) {
-    if (connection != null) {
-      await connection.close();
-    }
     return Response.json(
       statusCode: 500,
       body: {'sucesso': false, 'mensagem': 'Erro interno no servidor: $e'},
