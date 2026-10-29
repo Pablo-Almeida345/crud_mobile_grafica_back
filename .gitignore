@@ -15,3 +15,8 @@ build/
 # Test related files
 coverage/
 .env
+.env
+.env.*
+.dart_tool/
+.dart_frog/
+build/
