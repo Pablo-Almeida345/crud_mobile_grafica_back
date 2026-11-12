@@ -1,6 +1,5 @@
-
 name: crud_mobile_grafica_back
-description: Backend do projeto Mobile Gráfica utilizando Dart Frog e PostgreSQL.
+description: Backend do projeto Mobile Gráfica utilizando Dart Frog e Supabase.
 version: 1.0.0+1
 publish_to: none
 
@@ -10,23 +9,18 @@ environment:
 dependencies:
   # Framework para criação da API
   dart_frog: ^1.1.0
-<<<<<<< HEAD
-  supabase: ^2.8.0
-=======
 
-  # Banco de dados PostgreSQL
-  postgres: ^3.5.20
+  # Conexão e operações com o Supabase (PostgreSQL)
+  supabase: ^2.8.0
 
   # Gerador de identificadores UUID
   uuid: ^4.6.0
 
   # Variáveis de ambiente
->>>>>>> f6a0d4e75e2f369ce3c630d8ba5fb13b41ce971f
   dotenv: ^4.2.0
-  uuid: ^4.6.0
 
-  # Criptografia de senhas
-  bcrypt: ^1.2.0
+  # Criptografia de senhas (BCrypt)
+  bcrypt: ^1.1.5
 
 dev_dependencies:
   # Regras de análise do Dart Frog
@@ -34,10 +28,6 @@ dev_dependencies:
 
   # Simulação de dependências nos testes
   mocktail: ^1.0.0
-<<<<<<< HEAD
-  test: ^1.0.0
-=======
 
   # Testes automatizados
   test: ^1.0.0
->>>>>>> f6a0d4e75e2f369ce3c630d8ba5fb13b41ce971f

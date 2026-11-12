@@ -91,7 +91,7 @@ Handler _comCors(Handler handler) {
         (nome, _) => nome.toLowerCase() == 'vary',
       );
 
-      headers['Vary'] = vary.contains('') ? '' : vary.join(', ');
+      headers['Vary'] = vary.contains('*') ? '*' : vary.join(', ');
 
       return resposta.copyWith(headers: headers);
     } catch (_, stackTrace) {
