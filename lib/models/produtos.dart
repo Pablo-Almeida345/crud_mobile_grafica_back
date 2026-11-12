@@ -1,4 +1,3 @@
-
 class Produto {
   // Identificador único do produto
   final int? id;
@@ -29,7 +28,6 @@ class Produto {
   // ==========================================
 
   factory Produto.fromJson(Map<String, dynamic> json) {
-
     // Recupera e valida o ID
     int? idProduto;
 
@@ -67,8 +65,7 @@ class Produto {
       );
     }
 
-    final descricaoProduto =
-        descricaoInformada.trim();
+    final descricaoProduto = descricaoInformada.trim();
 
     // Recupera e converte o preço
     final precoInformado = json['preco'];
@@ -88,8 +85,7 @@ class Produto {
       );
     }
 
-    // Recupera a URL da imagem
-    // Aceita imagemUrl e imagem_url
+    // Recupera a URL da imagem (aceita imagemUrl e imagem_url)
     final imagemInformada =
         json['imagemUrl'] ?? json['imagem_url'];
 
@@ -106,23 +102,13 @@ class Produto {
             ? imagemInformada.trim()
             : null;
 
-    // Retorna o objeto Produto
+    // Retorna o objeto Produto validado
     return Produto(
-<<<<<<< HEAD
-      id: json['id'] != null ? int.tryParse(json['id'].toString()) : null,
-      nome: json['nome'] as String? ?? '',
-      descricao: json['descricao'] as String? ?? '',
-      preco: (json['preco'] is num)
-          ? (json['preco'] as num).toDouble()
-          : double.tryParse(json['preco'].toString()) ?? 0.0,
-      imagemUrl: json['imagem_url'] as String? ?? json['imagemUrl'] as String? ?? '',
-=======
       id: idProduto,
       nome: nomeProduto,
       descricao: descricaoProduto,
       preco: precoProduto,
       imagemUrl: imagemProduto,
->>>>>>> f6a0d4e75e2f369ce3c630d8ba5fb13b41ce971f
     );
   }
 
@@ -141,7 +127,7 @@ class Produto {
   }
 
   // ==========================================
-  // CONVERTER OBJETO PARA O POSTGRESQL
+  // CONVERTER OBJETO PARA O SUPABASE / POSTGRES
   // ==========================================
 
   Map<String, dynamic> toDatabaseMap() {
