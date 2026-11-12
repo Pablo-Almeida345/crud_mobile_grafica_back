@@ -3,21 +3,27 @@ import 'dart:io';
 import 'package:dart_frog/dart_frog.dart';
 import 'package:supabase/supabase.dart' hide HttpMethod;
 
+// Instância global única do Supabase para evitar recriar a conexão a cada request
+SupabaseClient? _supabaseClient;
+
 Handler middleware(Handler handler) {
   return _comCors((context) async {
-    final supabaseUrl = Platform.environment['SUPABASE_URL'] ??
-        'https://fshgacospypbgxzzpnxt.supabase.co';
+    // Inicializa o cliente do Supabase apenas uma vez (Lazy Loading seguro)
+    if (_supabaseClient == null) {
+      final supabaseUrl = Platform.environment['SUPABASE_URL'] ??
+          'https://fshgacospypbgxzzpnxt.supabase.co';
 
-    final supabaseKey = Platform.environment['SUPABASE_ANON_KEY'] ??
-        'sb_publishable_DkO4BfBFcSI3bBeUhojB1Q_pjFPdlMj';
+      final supabaseKey = Platform.environment['SUPABASE_ANON_KEY'] ??
+          'sb_publishable_DkO4BfBFcSI3bBeUhojB1Q_pjFPdlMj';
 
-    final supabase = SupabaseClient(
-      supabaseUrl,
-      supabaseKey,
-    );
+      _supabaseClient = SupabaseClient(
+        supabaseUrl,
+        supabaseKey,
+      );
+    }
 
     final newContext = context.provide<SupabaseClient>(
-      () => supabase,
+      () => _supabaseClient!,
     );
 
     return await handler(newContext);
@@ -28,31 +34,29 @@ Handler _comCors(Handler handler) {
   return (context) async {
     final metodo = context.request.method;
 
-    // Mantém os outros métodos com o comportamento existente.
+    // Se não for um método mapeado, passa adiante
     if (metodo != HttpMethod.get &&
         metodo != HttpMethod.post &&
+        metodo != HttpMethod.put &&
+        metodo != HttpMethod.delete &&
         metodo != HttpMethod.options) {
       return await handler(context);
     }
 
-    const origensPermitidas = {
-      'http://localhost:8080',
-      'http://127.0.0.1:8080',
-      'http://localhost:8081',
-      'http://127.0.0.1:8081',
-    };
-
     final origem = context.request.headers['origin'];
 
+    // CORREÇÃO: Se a origem vier nula (ex: aplicativos nativos Android/iOS), 
+    // liberamos explicitamente com '*' ou com a própria origem informada.
+    final corsOrigin = (origem != null && origem.isNotEmpty) ? origem : '*';
+
     final cors = <String, String>{
-      if (origem != null && origensPermitidas.contains(origem))
-        'Access-Control-Allow-Origin': origem,
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Accept, Content-Type',
+      'Access-Control-Allow-Origin': corsOrigin,
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+      'Access-Control-Allow-Headers': 'Accept, Content-Type, Authorization, apikey',
       'Vary': 'Origin',
     };
 
-    // A verificação do navegador não precisa acessar o banco.
+    // Responde imediatamente às requisições de teste pré-flight do navegador (OPTIONS)
     if (metodo == HttpMethod.options) {
       return Response(
         statusCode: HttpStatus.noContent,
