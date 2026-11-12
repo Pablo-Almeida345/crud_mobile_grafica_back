@@ -1,21 +1,22 @@
 import 'dart:io';
 import 'package:dart_frog/dart_frog.dart';
 import 'package:uuid/uuid.dart';
-import 'package:postgres/postgres.dart';
+import 'package:supabase/supabase.dart';
 
 const uuid = Uuid();
 
 Future<Response> onRequest(RequestContext context) async {
-  if (context.request.method != HttpMethod.post) {
+  // Correção Linha 9: context.request.method é uma String ('POST')
+  if (context.request.method != 'POST') {
     return Response.json(statusCode: 405, body: {'erro': 'Método não permitido'});
   }
 
-  // Pega a conexão injetada pelo _middleware.dart global
-  final connection = context.read<Connection?>();
-  if (connection == null) {
+  // Pega o cliente do Supabase injetado pelo _middleware.dart global
+  final supabase = context.read<SupabaseClient?>();
+  if (supabase == null) {
     return Response.json(
       statusCode: 500,
-      body: {'sucesso': false, 'mensagem': 'Conexão com o banco de dados indisponível.'},
+      body: {'sucesso': false, 'mensagem': 'Cliente do Supabase indisponível.'},
     );
   }
 
@@ -43,11 +44,11 @@ Future<Response> onRequest(RequestContext context) async {
       );
     }
 
-    // Verifica se o e-mail já existe
-    final resultadoEmail = await connection.execute(
-      Sql.named('SELECT id FROM administradores WHERE email = @email'),
-      parameters: {'email': email},
-    );
+    // Correção Linha 51: usar 'var' ou 'final' para deixar o Dart inferir o tipo correto do Supabase
+    final resultadoEmail = await supabase
+        .from('administradores')
+        .select('id')
+        .eq('email', email);
 
     if (resultadoEmail.isNotEmpty) {
       return Response.json(
@@ -58,17 +59,14 @@ Future<Response> onRequest(RequestContext context) async {
 
     final novoId = uuid.v4();
 
-    // Insere o novo administrador
-    await connection.execute(
-      Sql.named('INSERT INTO administradores (id, nome, email, cpf, senha) VALUES (@id, @nome, @email, @cpf, @senha)'),
-      parameters: {
-        'id': novoId,
-        'nome': nome,
-        'email': email,
-        'cpf': cpf,
-        'senha': senha, // Dica: futuramente lembra-te de fazer o hash da senha (ex: com bcrypt) antes de salvar!
-      },
-    );
+    // Insere o novo administrador no Supabase
+    await supabase.from('administradores').insert({
+      'id': novoId,
+      'nome': nome,
+      'email': email,
+      'cpf': cpf,
+      'senha': senha,
+    });
 
     return Response.json(
       statusCode: 201,

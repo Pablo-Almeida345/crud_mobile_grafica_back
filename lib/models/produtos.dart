@@ -21,7 +21,7 @@ class Produto {
       descricao: json['descricao'] as String? ?? '',
       preco: (json['preco'] is num)
           ? (json['preco'] as num).toDouble()
-          : double.parse(json['preco'].toString()),
+          : double.tryParse(json['preco'].toString()) ?? 0.0,
       imagemUrl: json['imagem_url'] as String? ?? json['imagemUrl'] as String? ?? '',
     );
   }

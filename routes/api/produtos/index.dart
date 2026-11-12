@@ -1,13 +1,14 @@
 import 'dart:io';
 import 'package:crud_mobile_grafica_back/models/produtos.dart';
 import 'package:dart_frog/dart_frog.dart';
-import 'package:postgres/postgres.dart';
+import 'package:supabase/supabase.dart';
 
 Future<Response> onRequest(RequestContext context) async {
-  switch (context.request.method) {
-    case HttpMethod.get:
+  final method = context.request.method.value.toUpperCase();
+  switch (method) {
+    case 'GET':
       return _getProdutos(context);
-    case HttpMethod.post:
+    case 'POST':
       return _cadastrarProduto(context);
     default:
       return Response(statusCode: HttpStatus.methodNotAllowed);
@@ -17,26 +18,27 @@ Future<Response> onRequest(RequestContext context) async {
 // 🟢 GET: Buscar todos os produtos
 Future<Response> _getProdutos(RequestContext context) async {
   try {
-    final connection = context.read<Connection?>();
-    if (connection == null) {
+    final supabase = context.read<SupabaseClient?>();
+    if (supabase == null) {
       return Response.json(
         statusCode: HttpStatus.internalServerError,
-        body: {'erro': 'Conexão com o banco de dados não disponível.'},
+        body: {'erro': 'Cliente do Supabase não disponível.'},
       );
     }
 
-    final results = await connection.execute(
-      'SELECT id, nome, descricao, preco, imagem_url FROM produto ORDER BY id DESC',
-    );
+    final response = await supabase
+        .from('produto')
+        .select()
+        .order('id', ascending: false);
 
-    final listaProdutos = results.map((row) {
-      return Produto(
-        id: row[0] as int,
-        nome: row[1] as String,
-        descricao: row[2] as String,
-        preco: (row[3] as num).toDouble(),
-        imagemUrl: row[4] as String,
-      ).toJson();
+    // BLINDAGEM DA LINHA 36: Garante que o response é tratado como lista com segurança
+    final data = response;
+    if (data is! List) {
+      return Response.json(body: []);
+    }
+
+    final listaProdutos = data.map((item) {
+      return Produto.fromJson(item as Map<String, dynamic>).toJson();
     }).toList();
 
     return Response.json(body: listaProdutos);
@@ -51,37 +53,33 @@ Future<Response> _getProdutos(RequestContext context) async {
 // 🔵 POST: Cadastrar novo produto
 Future<Response> _cadastrarProduto(RequestContext context) async {
   try {
-    final connection = context.read<Connection?>();
-    if (connection == null) {
+    final supabase = context.read<SupabaseClient?>();
+    if (supabase == null) {
       return Response.json(
         statusCode: HttpStatus.internalServerError,
-        body: {'erro': 'Conexão com o banco de dados não disponível.'},
+        body: {'erro': 'Cliente do Supabase não disponível.'},
       );
     }
 
     final body = await context.request.json() as Map<String, dynamic>;
-    final produto = Produto.fromJson(body);
-
-    final result = await connection.execute(
-      Sql.named(
-        'INSERT INTO produto (nome, descricao, preco, imagem_url) '
-        'VALUES (@nome, @descricao, @preco, @imagemUrl) RETURNING id',
-      ),
-      parameters: {
-        'nome': produto.nome,
-        'descricao': produto.descricao,
-        'preco': produto.preco,
-        'imagemUrl': produto.imagemUrl,
-      },
-    );
-
-    final idGerado = result.first[0];
+    
+    // Insere no Supabase e obtém o registo inserido de volta
+    final response = await supabase
+        .from('produto')
+        .insert({
+          'nome': body['nome'],
+          'descricao': body['descricao'],
+          'preco': body['preco'],
+          'imagem_url': body['imagemUrl'] ?? body['imagem_url'],
+        })
+        .select()
+        .single();
 
     return Response.json(
       statusCode: HttpStatus.created,
       body: {
         'mensagem': 'Produto cadastrado com sucesso!',
-        'id': idGerado,
+        'produto': response,
       },
     );
   } catch (e) {
