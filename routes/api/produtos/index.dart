@@ -55,7 +55,7 @@ Future<Response> onRequest(RequestContext context) async {
 
 Future<Response> _getProdutos(RequestContext context) async {
   try {
-    final supabase = context.read<SupabaseClient?>();
+    final supabase = context.read<SupabaseClient>();
     if (supabase == null) {
       return respostaErro(
         HttpStatus.internalServerError,
@@ -168,7 +168,7 @@ Future<Response> _cadastrarProduto(RequestContext context) async {
   // ==========================================
 
   try {
-    final supabase = context.read<SupabaseClient?>();
+    final supabase = context.read<SupabaseClient>();
     if (supabase == null) {
       return respostaErro(
         HttpStatus.internalServerError,
