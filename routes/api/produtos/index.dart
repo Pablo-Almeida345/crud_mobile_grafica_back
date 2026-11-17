@@ -2,11 +2,11 @@ import 'dart:io';
 
 import 'package:dart_frog/dart_frog.dart';
 import 'package:supabase/supabase.dart';
+import 'package:uuid/uuid.dart';
 
-// ==========================================
-// FUNÇÃO PARA PADRONIZAR ERROS
-// ==========================================
+const uuid = Uuid();
 
+// Função para padronizar erros
 Response respostaErro(int statusCode, String mensagem) {
   return Response.json(
     statusCode: statusCode,
@@ -17,30 +17,19 @@ Response respostaErro(int statusCode, String mensagem) {
   );
 }
 
-// ==========================================
-// ROTA PRINCIPAL DOS PRODUTOS
-// ==========================================
-
+// Rota principal dos produtos (GET e POST)
 Future<Response> onRequest(RequestContext context) async {
-  // Converte o método da requisição para string maiúscula (ex: 'GET', 'POST')
   final method = context.request.method.name.toUpperCase();
 
   switch (method) {
-    // GET - Listar todos os produtos
     case 'GET':
       return _getProdutos(context);
-
-    // POST - Cadastrar um novo produto
     case 'POST':
       return _cadastrarProduto(context);
-
-    // Outros métodos não são permitidos
     default:
       return Response.json(
         statusCode: HttpStatus.methodNotAllowed,
-        headers: {
-          'allow': 'GET, POST',
-        },
+        headers: {'allow': 'GET, POST'},
         body: {
           'sucesso': false,
           'mensagem': 'Método não permitido.',
@@ -52,36 +41,20 @@ Future<Response> onRequest(RequestContext context) async {
 // ==========================================
 // GET - BUSCAR TODOS OS PRODUTOS
 // ==========================================
-
 Future<Response> _getProdutos(RequestContext context) async {
   try {
     final supabase = context.read<SupabaseClient>();
-    if (supabase == null) {
-      return respostaErro(
-        HttpStatus.internalServerError,
-        'Cliente do Supabase não disponível.',
-      );
-    }
-
-    final response = await supabase
-        .from('produto')
-        .select()
-        .order('id', ascending: false);
-
-    final data = response;
-    if (data is! List) {
-      return Response.json(body: []);
-    }
+    final response = await supabase.from('produto').select();
 
     return Response.json(
       statusCode: HttpStatus.ok,
-      body: data,
+      body: response,
     );
   } catch (e) {
     print('Erro ao buscar produtos: $e');
     return respostaErro(
       HttpStatus.internalServerError,
-      'Erro interno ao buscar produtos.',
+      'Erro interno ao buscar produtos: $e',
     );
   }
 }
@@ -89,53 +62,31 @@ Future<Response> _getProdutos(RequestContext context) async {
 // ==========================================
 // POST - CADASTRAR NOVO PRODUTO
 // ==========================================
-
 Future<Response> _cadastrarProduto(RequestContext context) async {
   dynamic dados;
 
   try {
     dados = await context.request.json();
   } on FormatException {
-    return respostaErro(
-      HttpStatus.badRequest,
-      'JSON inválido!',
-    );
-  } catch (e) {
-    return respostaErro(
-      HttpStatus.badRequest,
-      'Não foi possível ler os dados enviados.',
-    );
+    return respostaErro(HttpStatus.badRequest, 'JSON inválido!');
+  } catch (_) {
+    return respostaErro(HttpStatus.badRequest, 'Não foi possível ler os dados enviados.');
   }
 
   if (dados is! Map<String, dynamic>) {
-    return respostaErro(
-      HttpStatus.badRequest,
-      'Formato de dados inválido!',
-    );
+    return respostaErro(HttpStatus.badRequest, 'Formato de dados inválido!');
   }
 
-  // ==========================================
-  // VALIDAÇÕES DOS CAMPOS
-  // ==========================================
-
-  final nomeInformado = dados['nome'];
-  if (nomeInformado is! String || nomeInformado.trim().isEmpty) {
-    return respostaErro(
-      HttpStatus.badRequest,
-      'O nome do produto é obrigatório!',
-    );
+  // Validação do nome
+  final nome = dados['nome']?.toString().trim() ?? '';
+  if (nome.isEmpty) {
+    return respostaErro(HttpStatus.badRequest, 'O nome do produto é obrigatório!');
   }
-  final nome = nomeInformado.trim();
 
-  final descricaoInformada = dados['descricao'];
-  if (descricaoInformada is! String || descricaoInformada.trim().isEmpty) {
-    return respostaErro(
-      HttpStatus.badRequest,
-      'A descrição do produto é obrigatória!',
-    );
-  }
-  final descricao = descricaoInformada.trim();
+  // Descrição
+  final descricao = dados['descricao']?.toString().trim() ?? '';
 
+  // Validação do preço
   final precoInformado = dados['preco'];
   final double? preco = precoInformado is num
       ? precoInformado.toDouble()
@@ -144,62 +95,54 @@ Future<Response> _cadastrarProduto(RequestContext context) async {
           : null;
 
   if (preco == null || !preco.isFinite || preco <= 0) {
-    return respostaErro(
-      HttpStatus.badRequest,
-      'O preço deve ser um número maior que zero!',
-    );
+    return respostaErro(HttpStatus.badRequest, 'O preço deve ser um número maior que zero!');
   }
 
-  final imagemInformada = dados['imagemUrl'] ?? dados['imagem_url'];
-  if (imagemInformada != null && imagemInformada is! String) {
-    return respostaErro(
-      HttpStatus.badRequest,
-      'A URL da imagem deve ser um texto!',
-    );
-  }
+  // Imagem (coluna "imagem")
+  final imagem = dados['imagem']?.toString().trim();
 
-  final String? imagemUrl =
-      imagemInformada is String && imagemInformada.trim().isNotEmpty
-          ? imagemInformada.trim()
-          : null;
+  // Categoria
+  final categoria = dados['categoria']?.toString().trim();
 
-  // ==========================================
-  // INSERÇÃO NO SUPABASE
-  // ==========================================
+  // Ativo (padrão true se não enviado)
+  final ativo = dados['ativo'] is bool ? dados['ativo'] : true;
 
   try {
     final supabase = context.read<SupabaseClient>();
-    if (supabase == null) {
-      return respostaErro(
-        HttpStatus.internalServerError,
-        'Cliente do Supabase não disponível.',
-      );
-    }
+    final produtoId = uuid.v4();
 
-    final response = await supabase
-        .from('produto')
-        .insert({
-          'nome': nome,
-          'descricao': descricao,
-          'preco': preco,
-          'imagem_url': imagemUrl,
-        })
-        .select()
-        .single();
+    // Insere na tabela "produto" com todas as colunas exatas
+    await supabase.from('produto').insert({
+      'id': produtoId,
+      'nome': nome,
+      'descricao': descricao,
+      'preco': preco,
+      'imagem': imagem,
+      'categoria': categoria,
+      'ativo': ativo,
+    });
 
     return Response.json(
       statusCode: HttpStatus.created,
       body: {
         'sucesso': true,
         'mensagem': 'Produto cadastrado com sucesso!',
-        'produto': response,
+        'produto': {
+          'id': produtoId,
+          'nome': nome,
+          'descricao': descricao,
+          'preco': preco,
+          'imagem': imagem,
+          'categoria': categoria,
+          'ativo': ativo,
+        },
       },
     );
   } catch (e) {
     print('Erro ao cadastrar produto: $e');
     return respostaErro(
       HttpStatus.internalServerError,
-      'Erro interno ao cadastrar produto.',
+      'Erro interno ao cadastrar produto: $e',
     );
   }
 }

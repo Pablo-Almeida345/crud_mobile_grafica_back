@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:bcrypt/bcrypt.dart';
 import 'package:dart_frog/dart_frog.dart';
@@ -58,13 +59,7 @@ Future<Response> onRequest(RequestContext context) async {
     return respostaErro(405, 'Método não permitido.');
   }
 
-  // Recupera o cliente do Supabase injetado pelo middleware
-  final supabase = context.read<SupabaseClient?>();
-  if (supabase == null) {
-    return respostaErro(500, 'Cliente do Supabase indisponível.');
-  }
-
-  // Recebe os dados enviados pelo frontend
+  // Recebe os dados enviados pelo frontend / Postman
   dynamic dados;
 
   try {
@@ -128,9 +123,12 @@ Future<Response> onRequest(RequestContext context) async {
   }
 
   try {
-    // 1. Verifica se o e-mail já está cadastrado
+    // Obtém o cliente do Supabase injetado pelo middleware
+    final supabase = context.read<SupabaseClient>();
+
+    // 1. Verifica se o e-mail já está cadastrado na tabela 'admin'
     final resultadoEmail = await supabase
-        .from('administradores')
+        .from('admin')
         .select('id')
         .eq('email', email)
         .maybeSingle();
@@ -139,9 +137,9 @@ Future<Response> onRequest(RequestContext context) async {
       return respostaErro(409, 'Este e-mail já está cadastrado!');
     }
 
-    // 2. Verifica se o CPF já está cadastrado
+    // 2. Verifica se o CPF já está cadastrado na tabela 'admin'
     final resultadoCpf = await supabase
-        .from('administradores')
+        .from('admin')
         .select('id')
         .eq('cpf', cpf)
         .maybeSingle();
@@ -150,12 +148,12 @@ Future<Response> onRequest(RequestContext context) async {
       return respostaErro(409, 'Este CPF já está cadastrado!');
     }
 
-    // Gera um ID único e criptografa a senha com BCrypt
+    // Gera um ID único (UUID v4) e criptografa a senha com BCrypt
     final novoId = uuid.v4();
     final senhaCriptografada = BCrypt.hashpw(senha, BCrypt.gensalt());
 
-    // 3. Insere o novo administrador no Supabase
-    await supabase.from('administradores').insert({
+    // 3. Insere o novo administrador na tabela correta 'admin'
+    await supabase.from('admin').insert({
       'id': novoId,
       'nome': nome,
       'email': email,

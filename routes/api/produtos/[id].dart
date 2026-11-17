@@ -4,35 +4,29 @@ import 'package:dart_frog/dart_frog.dart';
 import 'package:supabase/supabase.dart';
 
 Future<Response> onRequest(RequestContext context, String id) async {
-  final idProduto = int.tryParse(id);
-  if (idProduto == null) {
+  // Valida se o ID não está vazio
+  if (id.trim().isEmpty) {
     return Response.json(
       statusCode: HttpStatus.badRequest,
       body: {'erro': 'ID do produto inválido'},
     );
   }
 
-  final method = context.request.method.value.toUpperCase();
+  final method = context.request.method.name.toUpperCase();
   switch (method) {
     case 'PUT':
-      return _atualizarProduto(context, idProduto);
+      return _atualizarProduto(context, id);
     case 'DELETE':
-      return _deletarProduto(context, idProduto);
+      return _deletarProduto(context, id);
     default:
       return Response(statusCode: HttpStatus.methodNotAllowed);
   }
 }
 
 // 🟡 PUT: Atualizar produto existente
-Future<Response> _atualizarProduto(RequestContext context, int id) async {
+Future<Response> _atualizarProduto(RequestContext context, String id) async {
   try {
-    final supabase = context.read<SupabaseClient?>();
-    if (supabase == null) {
-      return Response.json(
-        statusCode: HttpStatus.internalServerError,
-        body: {'erro': 'Cliente do Supabase não disponível.'},
-      );
-    }
+    final supabase = context.read<SupabaseClient>();
 
     final body = await context.request.json() as Map<String, dynamic>;
     final produto = Produto.fromJson(body);
@@ -43,7 +37,7 @@ Future<Response> _atualizarProduto(RequestContext context, int id) async {
           'nome': produto.nome,
           'descricao': produto.descricao,
           'preco': produto.preco,
-          'imagem_url': produto.imagemUrl,
+          'imagem': produto.imagemUrl, // Ajustado para a coluna 'imagem' do seu banco
         })
         .eq('id', id);
 
@@ -57,15 +51,9 @@ Future<Response> _atualizarProduto(RequestContext context, int id) async {
 }
 
 // 🔴 DELETE: Excluir produto por ID
-Future<Response> _deletarProduto(RequestContext context, int id) async {
+Future<Response> _deletarProduto(RequestContext context, String id) async {
   try {
-    final supabase = context.read<SupabaseClient?>();
-    if (supabase == null) {
-      return Response.json(
-        statusCode: HttpStatus.internalServerError,
-        body: {'erro': 'Cliente do Supabase não disponível.'},
-      );
-    }
+    final supabase = context.read<SupabaseClient>();
 
     await supabase
         .from('produto')

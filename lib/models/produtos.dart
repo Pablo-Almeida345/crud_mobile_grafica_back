@@ -1,6 +1,6 @@
 class Produto {
-  // Identificador único do produto
-  final int? id;
+  // Identificador único do produto (suporta tanto inteiro quanto String/UUID para flexibilidade com o Supabase)
+  final dynamic id;
 
   // Nome do produto
   final String nome;
@@ -28,26 +28,13 @@ class Produto {
   // ==========================================
 
   factory Produto.fromJson(Map<String, dynamic> json) {
-    // Recupera e valida o ID
-    int? idProduto;
-
-    if (json['id'] != null) {
-      idProduto = int.tryParse(
-        json['id'].toString(),
-      );
-
-      if (idProduto == null || idProduto <= 0) {
-        throw const FormatException(
-          'ID do produto inválido!',
-        );
-      }
-    }
+    // Recupera e valida o ID de forma flexível (aceita int, String ou UUID)
+    final dynamic idProduto = json['id'];
 
     // Recupera e valida o nome
     final nomeInformado = json['nome'];
 
-    if (nomeInformado is! String ||
-        nomeInformado.trim().isEmpty) {
+    if (nomeInformado is! String || nomeInformado.trim().isEmpty) {
       throw const FormatException(
         'O nome do produto é obrigatório!',
       );
@@ -58,8 +45,7 @@ class Produto {
     // Recupera e valida a descrição
     final descricaoInformada = json['descricao'];
 
-    if (descricaoInformada is! String ||
-        descricaoInformada.trim().isEmpty) {
+    if (descricaoInformada is! String || descricaoInformada.trim().isEmpty) {
       throw const FormatException(
         'A descrição do produto é obrigatória!',
       );
@@ -77,28 +63,23 @@ class Produto {
             : null;
 
     // Verifica se o preço é válido
-    if (precoProduto == null ||
-        !precoProduto.isFinite ||
-        precoProduto <= 0) {
+    if (precoProduto == null || !precoProduto.isFinite || precoProduto <= 0) {
       throw const FormatException(
         'O preço deve ser maior que zero!',
       );
     }
 
     // Recupera a URL da imagem (aceita imagemUrl e imagem_url)
-    final imagemInformada =
-        json['imagemUrl'] ?? json['imagem_url'];
+    final imagemInformada = json['imagemUrl'] ?? json['imagem_url'];
 
-    if (imagemInformada != null &&
-        imagemInformada is! String) {
+    if (imagemInformada != null && imagemInformada is! String) {
       throw const FormatException(
         'A URL da imagem deve ser um texto!',
       );
     }
 
     final String? imagemProduto =
-        imagemInformada is String &&
-                imagemInformada.trim().isNotEmpty
+        imagemInformada is String && imagemInformada.trim().isNotEmpty
             ? imagemInformada.trim()
             : null;
 
@@ -123,6 +104,7 @@ class Produto {
       'descricao': descricao,
       'preco': preco,
       'imagemUrl': imagemUrl,
+      'imagem_url': imagemUrl, // Garante compatibilidade com ambas as chaves
     };
   }
 
@@ -136,7 +118,7 @@ class Produto {
       'nome': nome,
       'descricao': descricao,
       'preco': preco,
-      'imagem_url': imagemUrl,
+      'imagem_url': imagemUrl, // Coluna padrão no banco Supabase
     };
   }
 
@@ -145,7 +127,7 @@ class Produto {
   // ==========================================
 
   Produto copyWith({
-    int? id,
+    dynamic id,
     String? nome,
     String? descricao,
     double? preco,

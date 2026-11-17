@@ -1,110 +1,65 @@
 import 'dart:io';
-
 import 'package:dart_frog/dart_frog.dart';
 import 'package:supabase/supabase.dart' hide HttpMethod;
 
-// Instância global única do Supabase para evitar recriar a conexão a cada request
+// Instância global única do Supabase
 SupabaseClient? _supabaseClient;
 
-// Middleware global do Dart Frog
 Handler middleware(Handler handler) {
-  return _comCors((context) async {
-    // Inicializa o cliente do Supabase apenas uma vez (Lazy Loading seguro)
-    if (_supabaseClient == null) {
-      final supabaseUrl = Platform.environment['SUPABASE_URL'] ??
-          'https://fshgacospypbgxzzpnxt.supabase.co';
+  // 1. Inicializa o cliente do Supabase utilizando o .env
+  if (_supabaseClient == null) {
+    final supabaseUrl = Platform.environment['SUPABASE_URL'] ?? 'https://fshgacospypbgxzzpnxt.supabase.co';
+    final supabaseKey = Platform.environment['SUPABASE_PUBLISHABLE_KEY'] ?? 'sb_publishable_DkO4BfBFcSI3bBeUhojB1Q_pjFPdlMj';
 
-      final supabaseKey = Platform.environment['SUPABASE_ANON_KEY'] ??
-          'sb_publishable_DkO4BfBFcSI3bBeUhojB1Q_pjFPdlMj';
-
-      _supabaseClient = SupabaseClient(
-        supabaseUrl,
-        supabaseKey,
-      );
-    }
-
-    final newContext = context.provide<SupabaseClient>(
-      () => _supabaseClient!,
+    _supabaseClient = SupabaseClient(
+      supabaseUrl,
+      supabaseKey,
     );
+  }
 
-    return await handler(newContext);
-  });
+  // 2. Injeta o Supabase usando o provider oficial do Dart Frog e aplica o CORS
+  return handler
+      .use(provider<SupabaseClient>((context) => _supabaseClient!))
+      .use(_addCorsHeaders());
 }
 
-Handler _comCors(Handler handler) {
-  return (context) async {
-    final metodo = context.request.method;
+// Middleware dedicado apenas para gerenciar os Headers CORS
+Middleware _addCorsHeaders() {
+  return (handler) {
+    return (context) async {
+      final request = context.request;
+      final origin = request.headers['origin'] ?? '*';
 
-    // Se não for um método mapeado, passa adiante
-    if (metodo != HttpMethod.get &&
-        metodo != HttpMethod.post &&
-        metodo != HttpMethod.put &&
-        metodo != HttpMethod.delete &&
-        metodo != HttpMethod.options) {
-      return await handler(context);
-    }
-
-    final origem = context.request.headers['origin'];
-
-    // Libera a origem dinamicamente (compatível com Web e App Mobile nativo)
-    final corsOrigin = (origem != null && origem.isNotEmpty) ? origem : '*';
-
-    final cors = <String, String>{
-      'Access-Control-Allow-Origin': corsOrigin,
-      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': 'Accept, Content-Type, Authorization, apikey',
-      'Vary': 'Origin',
-    };
-
-    // Responde imediatamente às requisições de teste pré-flight do navegador (OPTIONS)
-    if (metodo == HttpMethod.options) {
-      return Response(
-        statusCode: HttpStatus.noContent,
-        headers: cors,
-      );
-    }
-
-    try {
-      final resposta = await handler(context);
-
-      final varyAnterior =
-          resposta.headers['vary'] ?? resposta.headers['Vary'] ?? '';
-
-      final vary = varyAnterior
-          .split(',')
-          .map((valor) => valor.trim())
-          .where((valor) => valor.isNotEmpty)
-          .toList();
-
-      if (!vary.any(
-        (valor) => valor == '*' || valor.toLowerCase() == 'origin',
-      )) {
-        vary.add('Origin');
-      }
-
-      final headers = <String, String>{
-        ...resposta.headers,
-        ...cors,
+      final corsHeaders = {
+        'Access-Control-Allow-Origin': origin,
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Accept, Content-Type, Authorization, apikey',
+        'Vary': 'Origin',
       };
 
-      headers.removeWhere(
-        (nome, _) => nome.toLowerCase() == 'vary',
-      );
+      // Responde imediatamente a requisições OPTIONS (Pre-flight)
+      if (request.method == HttpMethod.options) {
+        return Response(statusCode: HttpStatus.noContent, headers: corsHeaders);
+      }
 
-      headers['Vary'] = vary.contains('*') ? '*' : vary.join(', ');
+      try {
+        final response = await handler(context);
+        return response.copyWith(
+          headers: {
+            ...response.headers,
+            ...corsHeaders,
+          },
+        );
+      } catch (_, stackTrace) {
+        stderr.writeln('Erro interno ao processar a requisição.');
+        stderr.writeln(stackTrace);
 
-      return resposta.copyWith(headers: headers);
-    } catch (_, stackTrace) {
-      stderr.writeln('Erro interno ao processar a requisição.');
-      stderr.writeln(stackTrace);
-
-      return Response.json(
-        statusCode: HttpStatus.internalServerError,
-        headers: cors,
-        body: {
-          'error': 'Erro interno no servidor.',
-        },
-      );
-    }
+        return Response.json(
+          statusCode: HttpStatus.internalServerError,
+          headers: corsHeaders,
+          body: {'error': 'Erro interno no servidor.'},
+        );
+      }
+    };
   };
 }
