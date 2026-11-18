@@ -2,20 +2,20 @@ FROM dart:stable AS build
 
 WORKDIR /app
 
-# Instala o CLI do Dart Frog
+# Ativa o CLI do Dart Frog
 RUN dart pub global activate dart_frog_cli
 
-# Copia as dependências e baixa os pacotes
+# Baixa as dependências
 COPY pubspec.* ./
 RUN dart pub get
 
-# Copia o restante do código
+# Copia todo o código fonte
 COPY . .
 
-# IMPORTANTE: Gera a build de produção do Dart Frog (crucial para as rotas funcionarem)
+# CRUCIAL: Este comando gera a pasta build/ com as rotas que o Render procura
 RUN dart pub global run dart_frog_cli:dart_frog build
 
-# Compila o binário otimizado
+# Compila o binário otimizado para produção
 RUN dart compile exe build/bin/server.dart -o bin/server
 
 FROM scratch
