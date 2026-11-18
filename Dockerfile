@@ -1,29 +1,32 @@
-# Estágio de Build
+# Estágio de Build (Usa a SDK do Dart para compilar o binário completo)
 FROM dart:stable AS build
 
 WORKDIR /app
 
-# Ativa o CLI do Dart Frog e baixa as dependências
+# Ativa o CLI do Dart Frog e puxa as dependências
 RUN dart pub global activate dart_frog_cli
 COPY pubspec.* ./
 RUN dart pub get
 
-# Copia o restante do código fonte
+# Copia todo o código fonte e as rotas
 COPY . .
 
-# Gera o build de produção do Dart Frog (cria o diretório build/ com as rotas compiladas)
+# Gera o build de produção do Dart Frog (cria a pasta build/)
 RUN dart pub global run dart_frog_cli:dart_frog build
 
-# Estágio de Execução Final
-FROM dart:stable-slim
+# Compila o binário standalone definitivo do servidor do Dart Frog
+RUN dart compile exe build/bin/server.dart -o bin/server
+
+# Estágio de Execução Final (Imagem super leve e limpa)
+FROM debian:bookworm-slim
 
 WORKDIR /app
 
-# Copia a pasta de build gerada pelo Dart Frog e o pubspec para garantir o contexto de execução
+# Copia o binário compilado e os arquivos necessários do build
+COPY --from=build /app/bin/server /app/bin/server
 COPY --from=build /app/build /app/build
-COPY --from=build /app/pubspec.yaml /app/pubspec.yaml
 
 EXPOSE 8080
 
-# Inicia o servidor apontando diretamente para o entrypoint compilado pelo Dart Frog
-CMD ["dart", "build/bin/server.dart"]
+# Inicia o binário compilado diretamente
+CMD ["./bin/server"]
