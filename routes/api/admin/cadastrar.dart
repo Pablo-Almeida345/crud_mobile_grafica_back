@@ -1,7 +1,6 @@
 import 'dart:convert';
-import 'dart:io';
 
-import 'package:bcrypt/bcrypt.dart';
+import 'package:crypto/crypto.dart';
 import 'package:dart_frog/dart_frog.dart';
 import 'package:supabase/supabase.dart';
 import 'package:uuid/uuid.dart';
@@ -17,39 +16,6 @@ Response respostaErro(int statusCode, String mensagem) {
       'mensagem': mensagem,
     },
   );
-}
-
-// Função para validar CPF
-bool validarCpf(String cpf) {
-  if (!RegExp(r'^\d{11}$').hasMatch(cpf)) {
-    return false;
-  }
-
-  // Impede CPF com todos os números iguais
-  if (RegExp(r'^(\d)\1{10}$').hasMatch(cpf)) {
-    return false;
-  }
-
-  // Validação dos dígitos verificadores
-  for (int tamanho = 9; tamanho <= 10; tamanho++) {
-    int soma = 0;
-
-    for (int i = 0; i < tamanho; i++) {
-      soma += int.parse(cpf[i]) * (tamanho + 1 - i);
-    }
-
-    int digito = (soma * 10) % 11;
-
-    if (digito == 10) {
-      digito = 0;
-    }
-
-    if (digito != int.parse(cpf[tamanho])) {
-      return false;
-    }
-  }
-
-  return true;
 }
 
 // Rota de cadastro de administrador
@@ -102,19 +68,14 @@ Future<Response> onRequest(RequestContext context) async {
     return respostaErro(400, 'E-mail inválido!');
   }
 
-  // Validação do CPF
-  if (!validarCpf(cpf)) {
-    return respostaErro(400, 'CPF inválido!');
+  // Validação apenas da quantidade de números do CPF (11 dígitos)
+  if (!RegExp(r'^\d{11}$').hasMatch(cpf)) {
+    return respostaErro(400, 'O CPF deve conter 11 números.');
   }
 
   // Validação do tamanho da senha
   if (senha.length < 8) {
     return respostaErro(400, 'A senha deve conter pelo menos 8 caracteres.');
-  }
-
-  // Restrição do BCrypt (máximo de 72 bytes)
-  if (utf8.encode(senha).length > 72) {
-    return respostaErro(400, 'A senha excede o limite de 72 bytes.');
   }
 
   // Confirma se as senhas coincidem
@@ -126,10 +87,10 @@ Future<Response> onRequest(RequestContext context) async {
     // Obtém o cliente do Supabase injetado pelo middleware
     final supabase = context.read<SupabaseClient>();
 
-    // 1. Verifica se o e-mail já está cadastrado na tabela 'admin'
+    // 1. Verifica se o e-mail já está cadastrado na tabela 'admin' usando 'id_adm'
     final resultadoEmail = await supabase
         .from('admin')
-        .select('id')
+        .select('id_adm')
         .eq('email', email)
         .maybeSingle();
 
@@ -137,10 +98,10 @@ Future<Response> onRequest(RequestContext context) async {
       return respostaErro(409, 'Este e-mail já está cadastrado!');
     }
 
-    // 2. Verifica se o CPF já está cadastrado na tabela 'admin'
+    // 2. Verifica se o CPF já está cadastrado na tabela 'admin' usando 'id_adm'
     final resultadoCpf = await supabase
         .from('admin')
-        .select('id')
+        .select('id_adm')
         .eq('cpf', cpf)
         .maybeSingle();
 
@@ -148,13 +109,14 @@ Future<Response> onRequest(RequestContext context) async {
       return respostaErro(409, 'Este CPF já está cadastrado!');
     }
 
-    // Gera um ID único (UUID v4) e criptografa a senha com BCrypt
+    // Gera um ID único (UUID v4) e cria o hash SHA-256 em Base64 (44 caracteres)
     final novoId = uuid.v4();
-    final senhaCriptografada = BCrypt.hashpw(senha, BCrypt.gensalt());
+    final bytesSenha = utf8.encode(senha);
+    final senhaCriptografada = base64Encode(sha256.convert(bytesSenha).bytes);
 
-    // 3. Insere o novo administrador na tabela correta 'admin'
+    // 3. Insere o novo administrador utilizando a coluna 'id_adm'
     await supabase.from('admin').insert({
-      'id': novoId,
+      'id_adm': novoId,
       'nome': nome,
       'email': email,
       'cpf': cpf,
@@ -168,7 +130,7 @@ Future<Response> onRequest(RequestContext context) async {
         'sucesso': true,
         'mensagem': 'Administrador cadastrado com sucesso!',
         'admin': {
-          'id': novoId,
+          'id_adm': novoId,
           'nome': nome,
           'email': email,
           'cpf': cpf,
