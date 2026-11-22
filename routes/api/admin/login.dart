@@ -1,10 +1,10 @@
 import 'dart:convert';
 
-import 'package:bcrypt/bcrypt.dart';
+import 'package:crypto/crypto.dart';
 import 'package:dart_frog/dart_frog.dart';
 import 'package:supabase/supabase.dart';
 
-// Função para retornar mensagens de padronizadas de erro
+// Função para retornar mensagens padronizadas de erro
 Response respostaErro(int statusCode, String mensagem) {
   return Response.json(
     statusCode: statusCode,
@@ -22,8 +22,15 @@ Future<Response> onRequest(RequestContext context) async {
     return respostaErro(405, 'Método não permitido.');
   }
 
-  // Recupera o cliente do Supabase injetado pelo middleware
-  final supabase = context.read<SupabaseClient?>();
+  // Recupera o cliente do Supabase injetado pelo middleware com segurança
+  SupabaseClient? supabase;
+  try {
+    supabase = context.read<SupabaseClient>();
+  } catch (e) {
+    print('SupabaseClient não encontrado no RequestContext: $e');
+    supabase = null;
+  }
+
   if (supabase == null) {
     return respostaErro(500, 'Cliente do Supabase indisponível.');
   }
@@ -59,46 +66,28 @@ Future<Response> onRequest(RequestContext context) async {
     return respostaErro(400, 'E-mail inválido!');
   }
 
-  // Verifica o limite de bytes da senha (restrição do BCrypt)
-  if (utf8.encode(senha).length > 72) {
-    return respostaErro(400, 'A senha excede o limite de 72 bytes.');
-  }
-
   try {
-    // Busca o administrador no Supabase pelo e-mail
-    final response = await supabase
-        .from('administradores')
-        .select()
+    // Busca o administrador na tabela 'admin' pelo e-mail
+    final adminEncontrado = await supabase
+        .from('admin')
+        .select('id_adm, nome, email, senha')
         .eq('email', email)
         .maybeSingle();
 
-    // Verifica se o administrador existe
-    if (response == null) {
+    if (adminEncontrado == null) {
       return respostaErro(401, 'E-mail ou senha inválidos!');
     }
 
-    final adminEncontrado = response;
+    final idAdmin = adminEncontrado['id_adm']?.toString() ?? '';
+    final nomeAdmin = adminEncontrado['nome']?.toString() ?? '';
+    final emailAdmin = adminEncontrado['email']?.toString() ?? '';
+    final senhaArmazenada = adminEncontrado['senha']?.toString() ?? '';
 
-    final idAdmin = adminEncontrado['id'].toString();
-    final nomeAdmin = adminEncontrado['nome'].toString();
-    final emailAdmin = adminEncontrado['email'].toString();
-    final senhaHash = adminEncontrado['senha']?.toString() ?? '';
+    // Gera o mesmo hash SHA-256 em Base64 usado no cadastrar.dart
+    final senhaHashEnviada =
+        base64Encode(sha256.convert(utf8.encode(senha)).bytes);
 
-    // Verifica se a senha armazenada é um hash BCrypt válido
-    if (!senhaHash.startsWith(r'$2')) {
-      return respostaErro(401, 'E-mail ou senha inválidos!');
-    }
-
-    // Compara a senha informada com o hash armazenado
-    bool senhaCorreta = false;
-    try {
-      senhaCorreta = BCrypt.checkpw(senha, senhaHash);
-    } catch (e) {
-      senhaCorreta = false;
-    }
-
-    // Bloqueia o login caso a senha esteja incorreta
-    if (!senhaCorreta) {
+    if (senhaArmazenada.isEmpty || senhaHashEnviada != senhaArmazenada) {
       return respostaErro(401, 'E-mail ou senha inválidos!');
     }
 
@@ -109,7 +98,7 @@ Future<Response> onRequest(RequestContext context) async {
         'sucesso': true,
         'mensagem': 'Login realizado com sucesso!',
         'usuario': {
-          'id': idAdmin,
+          'id_adm': idAdmin,
           'nome': nomeAdmin,
           'email': emailAdmin,
         },
